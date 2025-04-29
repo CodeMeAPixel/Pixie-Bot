@@ -1,0 +1,133 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  discordId     String         @unique
+  username      String
+  discriminator String?
+  avatar        String?
+  isBotAdmin    Boolean        @default(false)
+  isBanned      Boolean        @default(false)
+  banReason     String?
+  banExpiresAt  DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  conversations Conversation[]
+  guildMembers  GuildMember[]
+  permissions   Permission[]
+}
+
+model Guild {
+  id           String         @id @default(cuid())
+  discordId    String         @unique
+  name         String
+  icon         String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  settings     GuildSettings?
+  members      GuildMember[]
+  channels     Channel[]
+  isBanned     Boolean        @default(false)
+  banReason    String?
+  banExpiresAt DateTime?
+  permissions  Permission[]
+}
+
+model GuildSettings {
+  id                    String   @id @default(cuid())
+  guildId               String   @unique
+  guild                 Guild    @relation(fields: [guildId], references: [id])
+  aiEnabled             Boolean  @default(true)
+  aiProvider            String   @default("openai")
+  aiModel               String   @default("gpt-4-turbo")
+  maxTokens             Int      @default(2000)
+  temperature           Float    @default(0.7)
+  maxConversationLength Int      @default(10)
+  allowedChannels       String   @default("[]")
+  enableReasoning       Boolean  @default(true)
+  enableWebSearch       Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model Permission {
+  id           String        @id @default(cuid())
+  name         String        @unique // Added unique constraint
+  description  String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  users        User[]
+  guilds       Guild[]
+  guildMembers GuildMember[]
+}
+
+model GuildMember {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id])
+  guildId      String
+  guild        Guild        @relation(fields: [guildId], references: [id])
+  isGuildAdmin Boolean      @default(false)
+  isBanned     Boolean      @default(false)
+  banReason    String?
+  permissions  Permission[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([userId, guildId])
+}
+
+model Channel {
+  id            String         @id @default(cuid())
+  discordId     String
+  guildId       String? // Made optional
+  guild         Guild?         @relation(fields: [guildId], references: [id]) // Made optional
+  name          String
+  type          String // 'text', 'voice', or 'DM'
+  isNSFW        Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  conversations Conversation[]
+
+  @@unique([discordId, guildId])
+}
+
+model Conversation {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  channelId String
+  channel   Channel   @relation(fields: [channelId], references: [id])
+  messages  Message[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([userId, channelId]) // Added compound unique constraint
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  content        String       @db.Text
+  role           String // 'user' or 'assistant'
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  createdAt      DateTime     @default(now())
+}
+
+model BotLog {
+  id        String   @id @default(cuid())
+  level     String // 'info', 'warning', 'error'
+  message   String
+  metadata  String? // JSON string of additional data
+  createdAt DateTime @default(now())
+}
