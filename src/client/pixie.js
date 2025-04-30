@@ -52,10 +52,10 @@ class Pixie extends Client {
         this.footer = '© 2025 - ByteBrush Studios';
 
         this.colors = {
-            primary: '#7289DA',
-            error: '#FF0000',
-            success: '#00FF00',
-            warning: '#FFFF00'
+            primary: 0xDB8F55,  // Converted from #DB8F55
+            error: 0xFF0000,    // Converted from #FF0000
+            success: 0x00FF00,  // Converted from #00FF00
+            warning: 0xFFFF00   // Converted from #FFFF00
         };
 
         this.aiModels = {

@@ -4,6 +4,10 @@
     "description": "A Discord bot with AI capabilities",
     "license": "AGPL-3.0-only",
     "main": "src/index.js",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/codemeapixel/pixie-bot.git"
+    },
     "type": "module",
     "scripts": {
         "dev": "nodemon src/index.js",

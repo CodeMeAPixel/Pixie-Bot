@@ -6,16 +6,11 @@ import { BotLogModel } from '../../models/botLog.js';
 
 export async function handleGuildMessage(message, user) {
     const botLog = new BotLogModel();
-    // Start typing immediately
-    message.channel.sendTyping();
-    const typingInterval = setInterval(() => {
-        message.channel.sendTyping().catch(() => { });
-    }, 9000); // Discord typing lasts 10s, so refresh every 9s
+    let typingInterval;
 
     try {
         await botLog.createLog('info', 'Guild message received', {
             userId: user.id,
-            guildId: message.guild.id,
             channelId: message.channel.id
         });
 
@@ -26,7 +21,6 @@ export async function handleGuildMessage(message, user) {
 
         if (!botMentioned && !isReplyToBot) {
             log('Message not directed at bot, ignoring', 'debug');
-            clearInterval(typingInterval);
             return;
         }
 
@@ -37,7 +31,7 @@ export async function handleGuildMessage(message, user) {
         if (guild?.isBanned) {
             await botLog.createLog('warning', 'Banned guild attempted access', {
                 guildId: message.guild.id,
-                reason: guild.banReason
+                reason: guild.banReason?.substring(0, 100)
             });
             clearInterval(typingInterval);
             return message.reply({
@@ -60,7 +54,6 @@ export async function handleGuildMessage(message, user) {
 
         // Check if AI is enabled for this guild
         if (!settings?.aiEnabled) {
-            clearInterval(typingInterval);
             await message.reply('AI features are currently disabled in this server. Please contact a server administrator to enable them.');
             return;
         }
@@ -68,7 +61,6 @@ export async function handleGuildMessage(message, user) {
         // Check if channel is allowed
         const allowedChannels = JSON.parse(settings.allowedChannels || '[]');
         if (allowedChannels.length > 0 && !allowedChannels.includes(message.channel.id) && !allowedChannels.includes('*')) {
-            clearInterval(typingInterval);
             await message.reply(`I'm not allowed to respond in this channel. Please use one of the allowed channels or contact a server administrator to add this channel to the allowed list.`);
             return;
         }
@@ -77,10 +69,15 @@ export async function handleGuildMessage(message, user) {
         try {
             await PermissionManager.requirePermission(message.author.id, message.guild.id, 'use_ai');
         } catch (error) {
-            clearInterval(typingInterval);
             await message.reply('You do not have permission to use AI features in this server.');
             return;
         }
+
+        // All checks passed, start typing
+        message.channel.sendTyping();
+        typingInterval = setInterval(() => {
+            message.channel.sendTyping().catch(() => { });
+        }, 9000);
 
         // Initialize AI client with guild settings
         const aiClient = new AIClient(
@@ -124,7 +121,22 @@ export async function handleGuildMessage(message, user) {
                     name: role.name,
                     id: role.id,
                     color: role.color
-                })) || []
+                })) || [],
+                channel: {
+                    name: message.channel.name,
+                    id: message.channel.id,
+                    type: message.channel.type,
+                    topic: message.channel.topic,
+                    nsfw: message.channel.nsfw
+                },
+                guild: {
+                    name: message.guild.name,
+                    id: message.guild.id,
+                    memberCount: message.guild.memberCount,
+                    channels: message.guild.channels.cache.size,
+                    description: message.guild.description,
+                    features: message.guild.features
+                }
             }
         });
 
@@ -141,13 +153,13 @@ export async function handleGuildMessage(message, user) {
                     failIfNotExists: false
                 });
             }
+            clearInterval(typingInterval); // Clear typing after sending response
         }
     } catch (error) {
-        await botLog.createLog('error', `Error in guild message handler: ${error.message}`, {
+        await botLog.createLog('error', `Error in guild message handler`, {
             userId: user.id,
-            guildId: message.guild.id,
             channelId: message.channel.id,
-            stack: error.stack
+            error: error.message?.substring(0, 100)
         });
         clearInterval(typingInterval);
         throw error;

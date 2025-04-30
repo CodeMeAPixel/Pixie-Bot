@@ -8,17 +8,45 @@ export class BotLogModel extends BaseModel {
     }
 
     /**
-     * Create a new log entry
-     * @param {string} level - Log level (info, warning, error)
-     * @param {string} message - Log message
-     * @param {Object} metadata - Additional metadata
+     * Truncate metadata object to fit in database
+     * @private
      */
+    _sanitizeMetadata(metadata) {
+        if (!metadata) return null;
+
+        // Keep only essential fields
+        const sanitized = {
+            userId: metadata.userId,
+            channelId: metadata.channelId,
+            guildId: metadata.guildId
+        };
+
+        // Add truncated error if present
+        if (metadata.error) {
+            sanitized.error = metadata.error.substring(0, 100);
+        }
+
+        // Add truncated reason if present
+        if (metadata.reason) {
+            sanitized.reason = metadata.reason.substring(0, 100);
+        }
+
+        const stringified = JSON.stringify(sanitized);
+        if (stringified.length > 255) { // Strict limit for VARCHAR(255)
+            return JSON.stringify({
+                truncated: true,
+                userId: metadata.userId
+            });
+        }
+        return stringified;
+    }
+
     async createLog(level, message, metadata = null) {
         try {
             return await this.create({
                 level,
                 message,
-                metadata: metadata ? JSON.stringify(metadata) : null
+                metadata: this._sanitizeMetadata(metadata)
             });
         } catch (error) {
             log(`Error creating bot log: ${error}`, 'error');

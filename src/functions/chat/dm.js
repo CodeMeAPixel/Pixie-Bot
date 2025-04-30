@@ -4,17 +4,19 @@ import { BotLogModel } from '../../models/botLog.js';
 
 export async function handleDM(message, user) {
     const botLog = new BotLogModel();
-    // Start typing immediately
-    message.channel.sendTyping();
-    const typingInterval = setInterval(() => {
-        message.channel.sendTyping().catch(() => { });
-    }, 9000); // Discord typing lasts 10s, so refresh every 9s
+    let typingInterval;
 
     try {
         await botLog.createLog('info', 'DM message received', {
             userId: user.id,
             channelId: message.channel.id
         });
+
+        // Only start typing after we know we'll process the message
+        message.channel.sendTyping();
+        typingInterval = setInterval(() => {
+            message.channel.sendTyping().catch(() => { });
+        }, 9000);
 
         const aiClient = new AIClient('openai', AI_PROVIDERS.openai.defaultModel);
         let searchMessage = null;
@@ -75,16 +77,16 @@ export async function handleDM(message, user) {
                     failIfNotExists: false
                 });
             }
+            clearInterval(typingInterval); // Clear typing after sending response
         }
     } catch (error) {
-        await botLog.createLog('error', `Error in DM handler: ${error.message}`, {
+        await botLog.createLog('error', `Error in DM handler`, {
             userId: user.id,
             channelId: message.channel.id,
-            stack: error.stack
+            error: error.message?.substring(0, 100)
         });
         await message.reply('An error occurred while processing your message.');
-        return;
-    } finally {
         clearInterval(typingInterval);
+        return;
     }
 }

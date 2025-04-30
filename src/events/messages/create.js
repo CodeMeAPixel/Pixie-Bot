@@ -11,8 +11,6 @@ export default {
         // Ignore bot messages
         if (message.author.bot) return;
 
-        let typingInterval;
-
         try {
             // Debug logging
             log(`Message received in channel: ${message.channel.id}`, 'debug');
@@ -56,7 +54,6 @@ export default {
         } catch (error) {
             log(`Error in message handler: ${error}`, 'error');
             log(`Stack trace: ${error.stack}`, 'error');
-            clearInterval(typingInterval);
             await message.reply({
                 content: 'An unexpected error occurred. Please try again later.',
                 failIfNotExists: false
