@@ -28,11 +28,19 @@ export class BaseAIProvider {
         const model = this.getModel();
 
         try {
+            // Ensure system message is at the start
+            const systemMessage = messages.find(m => m.role === 'system');
+            const otherMessages = messages.filter(m => m.role !== 'system');
+            const orderedMessages = systemMessage
+                ? [systemMessage, ...otherMessages]
+                : messages;
+
             const { text, data } = await generateText({
                 model,
-                messages: messages.map(msg => ({
+                messages: orderedMessages.map(msg => ({
                     role: msg.role,
-                    content: msg.content
+                    content: msg.content,
+                    name: msg.name
                 })),
                 ...options
             });
@@ -57,4 +65,4 @@ export class BaseAIProvider {
             throw new Error(`AI Provider Error (${this.providerName}): ${error.message}`);
         }
     }
-} 
+}

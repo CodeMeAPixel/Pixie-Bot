@@ -18,8 +18,20 @@ export async function handleDM(message, user) {
             message.channel.sendTyping().catch(() => { });
         }, 9000);
 
-        const aiClient = new AIClient('openai', AI_PROVIDERS.openai.defaultModel);
+        const aiClient = new AIClient('openai', AI_PROVIDERS.openai.defaultModel, {
+            weatherEnabled: true // Always enable weather in DMs
+        });
+
         let searchMessage = null;
+        let weatherMessage = null;
+
+        // Add weather listener
+        aiClient.once('weatherStart', async () => {
+            weatherMessage = await message.reply({
+                content: "🌤️ Checking weather conditions...",
+                failIfNotExists: false
+            });
+        });
 
         // Set up search listeners BEFORE we call handleMessage
         aiClient.once('searchStart', async () => {
@@ -40,7 +52,9 @@ export async function handleDM(message, user) {
 
         const response = await aiClient.handleMessage(message, user, null, {
             enableWebSearch: true,
+            enableWeather: true,
             searchMessage,
+            weatherMessage,
             userContext: {
                 username: message.author.username,
                 id: message.author.id,
@@ -60,13 +74,22 @@ export async function handleDM(message, user) {
                     createdTimestamp: message.createdTimestamp,
                     type: message.type,
                     pinned: message.pinned
+                },
+                weather: {
+                    enabled: true
                 }
             }
         });
 
-        // If we got a response, either update search message or send new one
+        // Update response handling
         if (response?.trim()) {
-            if (searchMessage) {  // If we used search, update that message
+            if (weatherMessage) {
+                await weatherMessage.edit({
+                    content: response,
+                    failIfNotExists: false
+                });
+            } else if (searchMessage) {
+                // If we used search, update that message
                 await searchMessage.edit({
                     content: response,
                     failIfNotExists: false
@@ -77,7 +100,7 @@ export async function handleDM(message, user) {
                     failIfNotExists: false
                 });
             }
-            clearInterval(typingInterval); // Clear typing after sending response
+            clearInterval(typingInterval);
         }
     } catch (error) {
         await botLog.createLog('error', `Error in DM handler`, {

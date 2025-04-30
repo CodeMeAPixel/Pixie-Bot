@@ -3,6 +3,7 @@ import { GuildModel } from '../../models/guild.js';
 import { PermissionManager } from '../../utils/permissions.js';
 import { log } from '../../utils/logger.js';
 import { BotLogModel } from '../../models/botLog.js';
+import { WeatherSearch } from '../../modules/tools/weather.js';
 
 export async function handleGuildMessage(message, user) {
     const botLog = new BotLogModel();
@@ -85,22 +86,34 @@ export async function handleGuildMessage(message, user) {
             settings.aiModel,
             {
                 temperature: settings.temperature,
-                maxTokens: settings.maxTokens
+                maxTokens: settings.maxTokens,
+                weatherEnabled: true // Always enable weather, like in DMs
             }
         );
 
         let searchMessage = null;
+        let weatherMessage = null;
 
-        // Set up search listeners BEFORE we call handleMessage
-        aiClient.once('searchStart', async () => {
-            searchMessage = await message.reply({
-                content: "🔍 Searching online sources for relevant information...",
+        // Set up weather listener FIRST (same as DM handler)
+        aiClient.once('weatherStart', async () => {
+            weatherMessage = await message.reply({
+                content: "🌤️ Checking weather conditions...",
                 failIfNotExists: false
             });
         });
 
+        // Set up search listeners AFTER weather
+        aiClient.once('searchStart', async () => {
+            if (!weatherMessage) { // Only if not handling weather
+                searchMessage = await message.reply({
+                    content: "🔍 Searching online sources for relevant information...",
+                    failIfNotExists: false
+                });
+            }
+        });
+
         aiClient.once('searchResults', async (results) => {
-            if (searchMessage) {
+            if (searchMessage && !weatherMessage) {
                 await searchMessage.edit({
                     content: "💭 Analyzing online information...",
                     failIfNotExists: false
@@ -110,7 +123,9 @@ export async function handleGuildMessage(message, user) {
 
         const response = await aiClient.handleMessage(message, user, guild, {
             enableWebSearch: settings.enableWebSearch,
+            enableWeather: true, // Always enable weather
             searchMessage,
+            weatherMessage,
             userContext: {
                 username: message.author.username,
                 id: message.author.id,
@@ -136,24 +151,32 @@ export async function handleGuildMessage(message, user) {
                     channels: message.guild.channels.cache.size,
                     description: message.guild.description,
                     features: message.guild.features
+                },
+                weather: {
+                    enabled: true // Always enable weather
                 }
             }
         });
 
-        // If we got a response, either update search message or send new one
+        // Update response handling
         if (response?.trim()) {
-            if (searchMessage) {  // If we used search, update that message
+            if (weatherMessage) {
+                await weatherMessage.edit({
+                    content: response,
+                    failIfNotExists: false
+                });
+            } else if (searchMessage) {
                 await searchMessage.edit({
                     content: response,
                     failIfNotExists: false
                 });
-            } else {  // Otherwise send as new message
+            } else {
                 await message.reply({
                     content: response,
                     failIfNotExists: false
                 });
             }
-            clearInterval(typingInterval); // Clear typing after sending response
+            clearInterval(typingInterval);
         }
     } catch (error) {
         await botLog.createLog('error', `Error in guild message handler`, {

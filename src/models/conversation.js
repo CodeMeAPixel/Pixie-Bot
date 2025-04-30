@@ -41,13 +41,82 @@ export class ConversationModel extends BaseModel {
      * Get recent messages
      */
     async getRecentMessages(userId, channelId, limit = 10) {
-        const conversation = await this.findByUserAndChannel(userId, channelId);
-        return conversation?.messages
-            .slice(-limit)
-            .map(msg => ({
-                role: msg.role,
-                content: msg.content
-            })) || [];
+        try {
+            const conversation = await this.findByUserAndChannel(userId, channelId);
+            const allMessages = conversation?.messages || [];
+
+            // Sort messages by timestamp to ensure correct order
+            const sortedMessages = allMessages.sort((a, b) => a.createdAt - b.createdAt);
+
+            // Get more historical context
+            const contextSize = Math.min(limit * 2, sortedMessages.length);
+            const contextMessages = sortedMessages.slice(-contextSize);
+
+            // Group messages by topic/context if possible
+            const messageGroups = [];
+            let currentGroup = [];
+
+            for (const msg of contextMessages) {
+                if (this._isNewContext(currentGroup[currentGroup.length - 1], msg)) {
+                    if (currentGroup.length > 0) {
+                        messageGroups.push(currentGroup);
+                    }
+                    currentGroup = [msg];
+                } else {
+                    currentGroup.push(msg);
+                }
+            }
+            if (currentGroup.length > 0) {
+                messageGroups.push(currentGroup);
+            }
+
+            // Create summary of older context
+            const recentMessages = messageGroups.slice(-3).flat();
+            if (messageGroups.length > 3) {
+                const olderContext = messageGroups.slice(0, -3).flat();
+                const summary = {
+                    role: 'system',
+                    content: `Previous conversation context: ${this._summarizeMessages(olderContext)}`
+                };
+                return [summary, ...recentMessages];
+            }
+
+            return recentMessages;
+        } catch (error) {
+            log(`Error getting recent messages: ${error}`, 'error');
+            return [];
+        }
+    }
+
+    _isNewContext(prevMsg, currMsg) {
+        if (!prevMsg) return true;
+
+        // Check time gap (30 minutes)
+        const timeGap = currMsg.createdAt - prevMsg.createdAt;
+        if (timeGap > 30 * 60 * 1000) return true;
+
+        return false;
+    }
+
+    _summarizeMessages(messages) {
+        const topics = new Set();
+        const keyPoints = [];
+
+        messages.forEach(msg => {
+            // Extract key topics (this is a basic implementation)
+            const words = msg.content.split(' ');
+            const importantWords = words.filter(w => w.length > 5).slice(0, 3);
+            importantWords.forEach(w => topics.add(w));
+
+            // Keep track of questions
+            if (msg.content.includes('?')) {
+                keyPoints.push(msg.content.substring(0, 100));
+            }
+        });
+
+        return `Topics discussed: ${Array.from(topics).join(', ')}. ` +
+            `Key questions: ${keyPoints.slice(-2).join('; ')}. ` +
+            `Total messages: ${messages.length}`;
     }
 
     async clearConversation(conversationId) {
